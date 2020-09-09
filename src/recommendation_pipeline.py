@@ -9,7 +9,7 @@ class RecommendationPipeline:
 
     # TODO: want this to take instantiated objects as params instead of arguments to instantiate the objects
     def __init__(self, streamer: Streamer, folnet: FollowerNetwork, live_streams: LiveStreams,
-                 max_followings: int = 150, sample_sz: int = 300 ) -> None:
+                 max_followings: int = 150, sample_sz: int = 300) -> None:
         self.streamer_pipe = StreamerPipe(streamer, sample_sz=sample_sz)
         self.folnet_pipe = FollowNetPipe(folnet, max_followings=max_followings)
         self.live_stream_pipe = LiveStreamPipe(live_streams)
@@ -47,7 +47,7 @@ class RecommendationPipeline:
 
 
 async def main():
-    from app.twitch_rec.colors import Col
+    from colors import Col
     from datetime import datetime
     from time import perf_counter
     t = perf_counter()

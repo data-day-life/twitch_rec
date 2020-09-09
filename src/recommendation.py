@@ -55,7 +55,7 @@ class Recommendation:
         return results
 
 
-    async def __call__(self, n_consumers=100) -> dict:
+    async def __call__(self, n_consumers=100):
         t = perf_counter()
 
 

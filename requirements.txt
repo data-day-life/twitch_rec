@@ -1,2 +1,3 @@
 python-dateutil
 pytz
+git+https://github.com/data-day-life/TwitchIO.git@master#egg=twitchio
