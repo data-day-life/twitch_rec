@@ -193,7 +193,7 @@ async def main():
         folnet_pipe.display
         ls_pipe.display
 
-        print(f'{Col.magenta}🟊 N consumers: {n_consumers} {Col.end}')
+        print(f'{Col.magenta}[🟊] N consumers: {n_consumers} {Col.end}')
         print(f'{Col.orange}[📞] Total Calls to Twitch: {tc.http.count_success_resp} {Col.end}')
         print(f'{Col.cyan}⏲ Total Time: {round(perf_counter() - t, 3)} sec {Col.end}')
         print(f'{Col.red}\t««« {datetime.now().strftime("%I:%M.%S %p")} »»» {Col.end}')
