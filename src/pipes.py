@@ -1,6 +1,5 @@
 import asyncio
 from typing import List
-from dataclasses import dataclass
 from twitch_client import TwitchClient
 
 """
@@ -26,27 +25,15 @@ class Pipe:
     _q_in: asyncio.Queue = None
     _q_out: asyncio.Queue = None
     tasks: List[asyncio.Task] = []
-    # data: dataclass
-
-    # def __init__(self, datacls_obj: dataclass = None, **kwargs):
-    #     self.data = datacls_obj
-    #     for kwarg, val in kwargs.items():
-    #         self.kwarg = val
-    #
 
 
-    # @property
-    # def display(self):
-    #     return self.data.display
-
-
-    def input(self, q_in: asyncio.Queue = None):
+    def input(self, q_in: asyncio.Queue = None) -> asyncio.Queue:
         if self._q_in is None and isinstance(q_in, asyncio.Queue):
             self._q_in = q_in
         return self._q_in
 
 
-    def output(self, q_out: asyncio.Queue = None):
+    def output(self, q_out: asyncio.Queue = None) -> asyncio.Queue:
         if self._q_out is None and isinstance(q_out, asyncio.Queue):
             self._q_out = q_out
         return self._q_out
@@ -56,7 +43,7 @@ class Pipe:
         raise NotImplementedError
 
 
-    async def task(self):
+    async def create_tasks(self, tc: TwitchClient):
         raise NotImplementedError
 
 
@@ -65,25 +52,38 @@ class Pipeline:
     pipes: List[Pipe] = []
     tasks: List[asyncio.Task] = []
 
-    def __init__(self):
+
+    def __init__(self, tc: TwitchClient):
+        self.tc = tc
         pass
 
-    def extend_pipeline(self, new_pipe: Pipe):
+
+    def add_pipe(self, new_pipe: Pipe):
         self.pipes.append(new_pipe)
         self.tasks.extend(new_pipe.tasks)
         self._link_queues(new_pipe)
 
+
     def _link_queues(self, new_pipe: Pipe):
-        num_pipes = len(self.pipes)
-        if num_pipes >= 2:
-            new_pipe._q_in = self.pipes[-2]._q_out
+        if len(self.pipes) >= 2:
             new_pipe.input(self.pipes[-2].output())
+
+
+
+    async def create_all_tasks(self):
+        [await pipe.create_tasks(self.tc) for pipe in self.pipes]
+
 
     def cancel_all_tasks(self):
         [t.cancel() for t in self.tasks]
 
+
     async def run(self):
-        pass
+        if self.tasks:
+            await asyncio.gather(self.tasks[0])
+        if len(self.tasks) > 1:
+            [await pipe.output().join() for pipe in self.pipes]
+        self.cancel_all_tasks()
 
 
 def main():
