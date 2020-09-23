@@ -17,11 +17,17 @@ class Streamer(Pipe):
     valid:       bool = False
     sanitized_follower_ids: List[str] = []
 
+
     def __init__(self, given_name, sample_sz=300):
         self.name = Streamer.validate_name(given_name)
         self.sample_sz = sample_sz
         self.bd = BotDetector()
         pass
+
+
+    async def __call__(self, tc: TwitchClient):
+        await self.produce(tc)
+        return self
 
 
     @staticmethod
@@ -51,94 +57,55 @@ class Streamer(Pipe):
     @property
     def display(self, result=''):
         try:
-            result += f'{Col.bold}{Col.yellow}<<<<< Streamer:  {self.name}{Col.end}\n'
-            result += f'\t\t{Col.yellow}🡲 uid: {self.uid}{Col.end}\n'
-            result += f'{Col.white}  * Total followers: {self.total_folls}{Col.end}\n'
+            result += f'{Col.bold}{Col.yellow}>>>>> Pipe || Streamer  ' \
+                      f'(N={self.sample_sz}) {Col.end}\n'
+            result += f'{Col.yellow} 🡲 {self.name}  (uid: {self.uid}) {Col.end}\n'
+            result += f'{Col.white}   * Total followers: {self.total_folls}{Col.end}\n'
+            result += f'{Col.white}   * {str(self.bd)}{Col.end}\n'
+            result += f'{Col.yellow} -> Follower ID List (sz={len(self.sanitized_follower_ids)}):{Col.end}\n'
+            result += f'    {self.sanitized_follower_ids}\n'
         except Exception as err:
             result += err
-
         return print(result)
+
+
+    async def create_tasks(self, tc: TwitchClient):
+        self.tasks.append(asyncio.create_task(self.produce(tc)))
 
 
     async def produce(self, tc):
-        pass
-
-
-
-class StreamerPipe:
-    # sanitized_follower_ids: List[str] = []
-
-    # def __init__(self, streamer: Streamer, sample_sz=300):
-    #     if streamer is None:
-    #         raise AttributeError('Streamer object provided to StreamerPipe was "None".')
-    #     self.streamer = streamer
-    #     self.sample_sz = sample_sz
-    #     self.sanitized_follower_ids = list()
-    #     self.bd = BotDetector()
-
-
-    @property
-    def display(self, result=''):
-        result += f'{Col.bold}{Col.yellow}<<<<< Pipe: Streamer,  N={self.sample_sz}{Col.end}\n'
-        result += f'{Col.white}  * {str(self.bd)}{Col.end}\n'
-        result += f'{Col.yellow} > Follower ID List (sz={len(self.sanitized_follower_ids)}):{Col.end}\n'
-        result += f'  {self.sanitized_follower_ids}\n'
-
-        return print(result)
-
-
-    async def __call__(self, tc: TwitchClient, q_out: asyncio.Queue = None):
-        await self.produce_follower_ids(tc, q_out)
-
-
-    @staticmethod
-    def put_queue(id_list, q_out: asyncio.Queue = None):
-        if q_out:
-            [q_out.put_nowait(foll_id) for foll_id in id_list]
-
-
-    async def produce_follower_ids(self, tc: TwitchClient, q_out: asyncio.Queue = None):
-        """
-        For a valid uid, collect a list of sanitized_follower_ids while removing follower bots.  Batches of
-        sanitized uids are placed into a given queue.
-
-        Args:
-            tc (TwitchClient):
-                A twitch client; used to collect follower information for a uid.
-
-            q_out (asyncio.Queue):
-                The worker queue where follower ids are placed; fetches followings for the valid follower_id.
-
-        Returns:
-            A list of sanitized follower uids; length is not necessarily equal to sample_sz.
-        """
         try:
-            await self.streamer.create(tc)
+            await self.create(tc)
         except Exception as err:
             raise AttributeError(f'{err} Unable to produce follower ids.')
+        return await self.fetch_follower_ids(tc)
 
-        return await self.fetch_follower_ids(tc, q_out)
 
-
-    async def fetch_follower_ids(self, tc: TwitchClient, q_out: asyncio.Queue = None):
-        follower_reply = await tc.get_n_followers(self.streamer.uid, n_folls=self.sample_sz, full_reply=True)
+    async def fetch_follower_ids(self, tc: TwitchClient):
+        follower_reply = await tc.get_n_followers(self.uid, n_folls=self.sample_sz, full_reply=True)
         next_cursor = follower_reply.get('cursor')
-        self.streamer.total_folls = follower_reply.get('total', 0)
+        self.total_folls = follower_reply.get('total', 0)
 
         # Sanitize first fetch, then sanitize remaining fetches
         all_sanitized_uids = self.bd.sanitize_foll_list(follower_reply.get('data'))
-        self.put_queue(all_sanitized_uids, q_out)
+        self.put_queue(all_sanitized_uids)
 
         while next_cursor and len(all_sanitized_uids) < self.sample_sz:
             params = [('after', next_cursor)]
-            next_foll_reply = await tc.get_n_followers(self.streamer.uid, params=params, full_reply=True)
+            next_foll_reply = await tc.get_n_followers(self.uid, params=params, full_reply=True)
             next_cursor = next_foll_reply.get('cursor')
             next_sanitized_uids = self.bd.sanitize_foll_list(next_foll_reply.get('data'))
-            all_sanitized_uids.extend(next_sanitized_uids)
-            self.put_queue(next_sanitized_uids, q_out)
+            if next_sanitized_uids:
+                self.put_queue(next_sanitized_uids)
+                all_sanitized_uids.extend(next_sanitized_uids)
 
         self.sanitized_follower_ids = all_sanitized_uids
         return self.sanitized_follower_ids
+
+
+    def put_queue(self, id_list):
+        if self._q_out:
+            [self._q_out.put_nowait(foll_id) for foll_id in id_list]
 
 
 async def main():
@@ -149,12 +116,10 @@ async def main():
     sample_sz = 350
 
     async with TwitchClient() as tc:
-        streamer = await Streamer(some_name).create(tc)
-        str_pipe = StreamerPipe(streamer, sample_sz=sample_sz)
-        await str_pipe(tc)
+        streamer = Streamer(some_name, sample_sz)
+        await streamer(tc)
 
     streamer.display
-    str_pipe.display
     print(f'{Col.orange}[📞] Total Calls to Twitch: {tc.http.count_success_resp} {Col.end}')
     print(f'{Col.cyan}[⏲] Total Time: {round(perf_counter() - t, 3)} sec {Col.end}')
 
